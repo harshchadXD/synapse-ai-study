@@ -11,8 +11,8 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
 
-  if (error) throw error;
-  if (!user) redirect("/");
+  if (error || !user) redirect("/");
+
 
   const metadataName = user.user_metadata.full_name ?? user.user_metadata.name;
   const name =
@@ -20,11 +20,14 @@ export default async function DashboardPage() {
       ? metadataName.trim()
       : user.email?.split("@")[0] ?? "Student";
 
+  const avatarUrl = user.user_metadata.avatar_url ?? user.user_metadata.picture;
+
   return (
     <DashboardHome
       name={name}
       email={user.email ?? ""}
       provider={user.app_metadata.provider === "google" ? "Google" : "Email"}
+      avatarUrl={avatarUrl}
     />
   );
 }
