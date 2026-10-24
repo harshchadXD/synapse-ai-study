@@ -21,6 +21,10 @@ Synapse turns study materials—including PDFs, presentations, YouTube videos, a
 
 
 
+
+#Complete chat history of github copilot CLI which we used to devlop the project is given in the file named :github-copilot-cli-chat.json1" this file is taken locally from github copilot cli instead of the usual online JSON file so there might be differences in formatting but the complete chat history is still accesible in this file and can be interpreted for judging and analysing.
+
+
 # Running the Website
 
  There are two ways to use Synapse:
