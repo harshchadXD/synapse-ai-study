@@ -745,6 +745,7 @@ export default function DashboardHome({
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const notesEditorRef = useRef<HTMLDivElement>(null);
+  const notesSelectionRef = useRef<Range | null>(null);
   const dashboardRef = useRef<HTMLElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
@@ -758,6 +759,7 @@ export default function DashboardHome({
   const [toolCount, setToolCount] = useState(10);
   const [notesTitle, setNotesTitle] = useState("");
   const [notesContent, setNotesContent] = useState("");
+  const [notesCharacterCount, setNotesCharacterCount] = useState(0);
   const [notesFontSize, setNotesFontSize] = useState("16px");
   const [notesTextColor, setNotesTextColor] = useState("#263b37");
   const [notesHighlightColor, setNotesHighlightColor] = useState("#fff09a");
@@ -800,6 +802,12 @@ export default function DashboardHome({
   const [profileOpen, setProfileOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth <= 820) {
+      setSidebarCollapsed(true);
+    }
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -992,6 +1000,7 @@ export default function DashboardHome({
           ? sanitizeNotesHtml(content)
           : markdownToNotesHtml(content);
         setNotesContent(editorHtml);
+        setNotesCharacterCount(new DOMParser().parseFromString(editorHtml, "text/html").body.textContent?.length ?? 0);
         if (notesEditorRef.current) notesEditorRef.current.innerHTML = editorHtml;
       });
     return () => { isMounted = false; };
@@ -1004,7 +1013,12 @@ export default function DashboardHome({
     const revealElements = dashboard.querySelectorAll<HTMLElement>(".dashboard-reveal");
     const showAll = () => revealElements.forEach((element) => element.classList.add("is-revealed"));
 
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) {
+    if (
+      activeNav !== "Home" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+      !("IntersectionObserver" in window) ||
+      (typeof window !== "undefined" && window.innerWidth <= 820)
+    ) {
       showAll();
       return;
     }
@@ -1030,7 +1044,7 @@ export default function DashboardHome({
       observer.disconnect();
       dashboard.classList.remove("reveal-enabled");
     };
-  }, []);
+  }, [activeNav, notebooks.length]);
 
   const orderedNotebooks = useMemo(
     () => [...notebooks].sort((a, b) => Date.parse(b.createdAt ?? b.opened) - Date.parse(a.createdAt ?? a.opened)),
@@ -1240,12 +1254,18 @@ export default function DashboardHome({
   }
 
   async function openNotebook(notebook: Notebook) {
+    if (typeof window !== "undefined" && window.innerWidth <= 820) {
+      setSidebarCollapsed(true);
+    }
     setActiveNotebookWorkspaceId(notebook.id);
     setToolNotebookId(notebook.id);
     switchToChat(notebook.id);
   }
 
   function openNotebookModule(module: "Chat" | "Notes" | "Flashcards" | "Quiz") {
+    if (typeof window !== "undefined" && window.innerWidth <= 820) {
+      setSidebarCollapsed(true);
+    }
     const notebookId = activeNotebookWorkspaceId;
     if (!notebookId) return;
     setToolNotebookId(notebookId);
@@ -1388,6 +1408,7 @@ export default function DashboardHome({
         }
         setNotesTitle(result.title);
         setNotesContent(notesHtml);
+        setNotesCharacterCount(new DOMParser().parseFromString(notesHtml, "text/html").body.textContent?.length ?? 0);
         if (notesEditorRef.current) notesEditorRef.current.innerHTML = notesHtml;
         setActiveNav("Notes");
         setNotice("Notes generated and saved. Edit them any time.");
@@ -1458,14 +1479,28 @@ export default function DashboardHome({
     const editor = notesEditorRef.current;
     if (!editor) return;
     editor.focus();
+    if (notesSelectionRef.current && editor.contains(notesSelectionRef.current.commonAncestorContainer)) {
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(notesSelectionRef.current);
+    }
     document.execCommand(command, false, value);
+    notesSelectionRef.current = window.getSelection()?.rangeCount
+      ? window.getSelection()!.getRangeAt(0).cloneRange()
+      : null;
     setNotesContent(sanitizeNotesHtml(editor.innerHTML));
+    setNotesCharacterCount(editor.innerText.length);
   }
 
   function applyNotesFontSize(size: string) {
     const editor = notesEditorRef.current;
     if (!editor) return;
     editor.focus();
+    if (notesSelectionRef.current && editor.contains(notesSelectionRef.current.commonAncestorContainer)) {
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(notesSelectionRef.current);
+    }
     document.execCommand("fontSize", false, "7");
     editor.querySelectorAll('font[size="7"]').forEach((font) => {
       const span = document.createElement("span");
@@ -1473,8 +1508,12 @@ export default function DashboardHome({
       span.innerHTML = font.innerHTML;
       font.replaceWith(span);
     });
+    notesSelectionRef.current = window.getSelection()?.rangeCount
+      ? window.getSelection()!.getRangeAt(0).cloneRange()
+      : null;
     setNotesFontSize(size);
     setNotesContent(sanitizeNotesHtml(editor.innerHTML));
+    setNotesCharacterCount(editor.innerText.length);
   }
 
   async function saveNotes() {
@@ -1492,6 +1531,7 @@ export default function DashboardHome({
       }, { onConflict: "user_id,notebook_id" });
       if (error) throw new Error("Could not save your notes. Run the latest Supabase migration.");
       setNotesContent(content);
+      setNotesCharacterCount(new DOMParser().parseFromString(content, "text/html").body.textContent?.length ?? 0);
       if (notesEditorRef.current) notesEditorRef.current.innerHTML = content;
       setNotesTitle(title);
       setNotice("Your notes are saved.");
@@ -1555,6 +1595,7 @@ export default function DashboardHome({
         setNotesTitle((title) => title || `${notebooks.find((item) => item.id === toolNotebookId)?.title ?? "Study"} · Study notes`);
         const notesHtml = markdownToNotesHtml(result.updatedNotes);
         setNotesContent(notesHtml);
+        setNotesCharacterCount(new DOMParser().parseFromString(notesHtml, "text/html").body.textContent?.length ?? 0);
         if (notesEditorRef.current) notesEditorRef.current.innerHTML = notesHtml;
       }
       setNotice(result.warning ?? "Quiz graded. Synapse updated your notes with the concepts to revisit.");
@@ -1668,6 +1709,7 @@ export default function DashboardHome({
     setToolNotebookId(notebook.id);
     setNotesTitle(title);
     setNotesContent(content);
+    setNotesCharacterCount(new DOMParser().parseFromString(content, "text/html").body.textContent?.length ?? 0);
     if (notesEditorRef.current) notesEditorRef.current.innerHTML = content;
     setNotice("Explanation added to this notebook’s notes.");
   }
@@ -1717,6 +1759,9 @@ export default function DashboardHome({
   }
 
   function chooseNavigation(label: string) {
+    if (typeof window !== "undefined" && window.innerWidth <= 820) {
+      setSidebarCollapsed(true);
+    }
     setActiveNav(label);
     if (label === "Chat") {
       setActiveNotebookWorkspaceId(null);
@@ -1744,6 +1789,15 @@ export default function DashboardHome({
       >
         <Icon name={sidebarCollapsed ? "menu" : "x"} size={22} />
       </button>
+
+      {/* Mobile sidebar backdrop */}
+      {!sidebarCollapsed && (
+        <div
+          className="mobile-sidebar-backdrop"
+          onClick={() => setSidebarCollapsed(true)}
+          aria-hidden="true"
+        />
+      )}
 
       <aside className="dashboard-sidebar" ref={sidebarRef}>
         <div className="sidebar-header">
@@ -1851,7 +1905,7 @@ export default function DashboardHome({
             }}
           />
           {activeNav === "Notebooks" ? (
-            <section className="workspace-module dashboard-reveal">
+            <section className="workspace-module">
               <div className="workspace-module-heading">
                 <div>
                   <span className="dashboard-eyebrow"><span /> YOUR LESSON LIBRARY</span>
@@ -1902,7 +1956,7 @@ export default function DashboardHome({
               )}
             </section>
           ) : activeNav === "Tasks" ? (
-            <section className="workspace-module dashboard-reveal">
+            <section className="workspace-module">
               <div className="tasks-page-heading">
                 <div>
                   <span className="dashboard-eyebrow"><span /> YOUR STUDY PLANNER</span>
@@ -1966,7 +2020,7 @@ export default function DashboardHome({
                 ))}
               </nav>
             )}
-            <section className="workspace-module study-chat-page dashboard-reveal">
+            <section className="workspace-module study-chat-page">
               <div className="workspace-module-heading">
                 <div>
                   <span className="dashboard-eyebrow"><span /> YOUR AI STUDY PARTNER</span>
@@ -2074,7 +2128,7 @@ export default function DashboardHome({
           ) : activeNav === "Notes" ? (
             <>
             {activeNotebookWorkspaceId && <nav className="notebook-workspace-tabs" aria-label="Notebook tools">{(["Chat", "Notes", "Flashcards", "Quiz"] as const).map((module) => <button type="button" key={module} className={activeNav === module ? "active" : ""} onClick={() => openNotebookModule(module)}>{module}</button>)}</nav>}
-            <section className="workspace-module dashboard-reveal">
+            <section className="workspace-module">
               <div className="workspace-module-heading">
                 <div>
                   <span className="dashboard-eyebrow"><span /> YOUR STUDY NOTES</span>
@@ -2110,7 +2164,12 @@ export default function DashboardHome({
                   </div>
                   <div className="notes-editor-card">
                     <input className="notes-title-input" value={notesTitle} onChange={(event) => setNotesTitle(event.target.value)} placeholder="Notes title" aria-label="Notes title" />
-                    <div className="notes-format-toolbar" role="toolbar" aria-label="Notes formatting">
+                    <div className="notes-format-toolbar" role="toolbar" aria-label="Notes formatting" onMouseDown={() => {
+                      const selection = window.getSelection();
+                      if (selection?.rangeCount && notesEditorRef.current?.contains(selection.anchorNode)) {
+                        notesSelectionRef.current = selection.getRangeAt(0).cloneRange();
+                      }
+                    }}>
                       <button type="button" aria-label="Bold" title="Bold" onMouseDown={(event: ReactMouseEvent<HTMLButtonElement>) => event.preventDefault()} onClick={() => formatNotes("bold")}><b>B</b></button>
                       <button type="button" aria-label="Underline" title="Underline" onMouseDown={(event: ReactMouseEvent<HTMLButtonElement>) => event.preventDefault()} onClick={() => formatNotes("underline")}><u>U</u></button>
                       <label title="Text size"><span>Size</span>
@@ -2132,14 +2191,17 @@ export default function DashboardHome({
                       aria-multiline="true"
                       aria-label="Editable study notes"
                       data-placeholder="Choose Generate notes to build study notes from this notebook, or start writing your own…"
-                      onInput={(event) => setNotesContent(sanitizeNotesHtml(event.currentTarget.innerHTML))}
+                      onInput={(event) => {
+                        setNotesContent(sanitizeNotesHtml(event.currentTarget.innerHTML));
+                        setNotesCharacterCount(event.currentTarget.innerText.length);
+                      }}
                       onPaste={(event) => {
                         event.preventDefault();
                         document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
                       }}
                     />
                     <div className="notes-editor-footer">
-                      <span>{notesEditorRef.current?.innerText.length.toLocaleString() ?? 0} characters · Saved to your account</span>
+                      <span>{notesCharacterCount.toLocaleString()} characters · Saved to your account</span>
                       <div>
                         <button className="module-secondary-button" type="button" onClick={downloadNotes}>Download .html</button>
                         <button className="module-primary-button" type="button" disabled={isSavingNotes} onClick={() => void saveNotes()}>{isSavingNotes ? "Saving…" : "Save notes"}</button>
@@ -2153,7 +2215,7 @@ export default function DashboardHome({
           ) : activeNav === "Flashcards" ? (
             <>
             {activeNotebookWorkspaceId && <nav className="notebook-workspace-tabs" aria-label="Notebook tools">{(["Chat", "Notes", "Flashcards", "Quiz"] as const).map((module) => <button type="button" key={module} className={activeNav === module ? "active" : ""} onClick={() => openNotebookModule(module)}>{module}</button>)}</nav>}
-            <section className="workspace-module dashboard-reveal">
+            <section className="workspace-module">
               <div className="workspace-module-heading">
                 <div>
                   <span className="dashboard-eyebrow"><span /> ACTIVE RECALL</span>
@@ -2239,7 +2301,7 @@ export default function DashboardHome({
           ) : activeNav === "Quiz" ? (
             <>
             {activeNotebookWorkspaceId && <nav className="notebook-workspace-tabs" aria-label="Notebook tools">{(["Chat", "Notes", "Flashcards", "Quiz"] as const).map((module) => <button type="button" key={module} className={activeNav === module ? "active" : ""} onClick={() => openNotebookModule(module)}>{module}</button>)}</nav>}
-            <section className="workspace-module dashboard-reveal">
+            <section className="workspace-module">
               <div className="workspace-module-heading">
                 <div>
                   <span className="dashboard-eyebrow"><span /> PRACTICE & GROW</span>
@@ -2379,7 +2441,7 @@ export default function DashboardHome({
           </section>
 
           {recentNotebook && (
-            <button className="resume-banner dashboard-reveal" type="button" onClick={() => void openNotebook(recentNotebook)}>
+            <button className="resume-banner" type="button" onClick={() => void openNotebook(recentNotebook)}>
               <span className="resume-icon"><Icon name="clock" size={17} /></span>
               <span className="resume-label">RECENT ACTIVITY</span>
               <b>{recentNotebook.title}</b>

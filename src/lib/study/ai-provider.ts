@@ -217,11 +217,19 @@ async function callGoogleGemini(
 // 3. GROQ CLOUD API CONFIGURATION (ULTRA-FAST FALLBACK)
 // ─────────────────────────────────────────────────────────────────────────────
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODELS = [
+const BASE_GROQ_MODELS = [
   "qwen/qwen3.8-27b",
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
   "openai/gpt-oss-120b",
   "openai/gpt-oss-20b",
+  "mixtral-8x7b-32768",
 ];
+
+function getGroqCandidateModels(): string[] {
+  const preferred = readEnvKey("GROQ_CHAT_MODEL");
+  return Array.from(new Set([...(preferred ? [preferred] : []), ...BASE_GROQ_MODELS]));
+}
 
 async function callGroqCloud(
   messages: ChatMessage[],
@@ -233,7 +241,7 @@ async function callGroqCloud(
   }
 
   let lastErr: Error | null = null;
-  for (const model of GROQ_MODELS) {
+  for (const model of getGroqCandidateModels()) {
     try {
       const response = await fetch(GROQ_API_URL, {
         method: "POST",
@@ -361,7 +369,7 @@ export function getAIProviderStatus() {
     activeModel = GEMINI_MODELS[0];
   } else if (groqKey) {
     activeProvider = "groq";
-    activeModel = GROQ_MODELS[0];
+    activeModel = getGroqCandidateModels()[0];
   }
 
   return {

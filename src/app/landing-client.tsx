@@ -198,11 +198,14 @@ function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
 
     landing.classList.add("reveal-enabled");
 
-    const elements = Array.from(
-      landing.querySelectorAll<HTMLElement>(".reveal-on-scroll"),
-    );
+    const elements = Array.from(landing.querySelectorAll<HTMLElement>(".reveal-on-scroll"));
+    const bentoCards = Array.from(landing.querySelectorAll<HTMLElement>(".feature-card"));
+    bentoCards.forEach((card, index) => {
+      card.style.setProperty("--card-index", String(index));
+    });
     const showEverything = () => {
       elements.forEach((element) => element.classList.add("is-visible"));
+      bentoCards.forEach((card) => card.classList.add("is-revealed"));
     };
 
     if (
@@ -222,7 +225,7 @@ function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
           }
         });
       },
-      { threshold: 0.08, rootMargin: "0px 0px -40px 0px" },
+      { threshold: 0, rootMargin: "0px 0px 120px 0px" },
     );
 
     elements.forEach((element) => {
@@ -233,10 +236,6 @@ function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
         observer.observe(element);
       }
     });
-
-    const bentoCards = Array.from(
-      landing.querySelectorAll<HTMLElement>(".feature-card"),
-    );
 
     /* ─── Staggered bento card reveals ─── */
     const bentoObserver = new IntersectionObserver(
@@ -249,10 +248,9 @@ function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
           }
         });
       },
-      { threshold: 0.08, rootMargin: "0px 0px -40px 0px" },
+      { threshold: 0, rootMargin: "0px 0px 120px 0px" },
     );
-    bentoCards.forEach((card, i) => {
-      card.style.setProperty("--card-index", String(i));
+    bentoCards.forEach((card) => {
       bentoObserver.observe(card);
     });
 

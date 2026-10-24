@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# copilot chat history (ensure it is tracked and not ignored)
+!github-copilot-cli-chat.jsonl
+!github-copilot-cli-chat.json1
+
