@@ -2024,7 +2024,7 @@ export default function DashboardHome({
               <div className="workspace-module-heading">
                 <div>
                   <span className="dashboard-eyebrow"><span /> YOUR AI STUDY PARTNER</span>
-                  <h1>{chatContextId ? "Study chat" : "Let&apos;s figure it out"}<span>.</span></h1>
+                  <h1>{chatContextId ? "Study chat" : "Let's figure it out"}<span>.</span></h1>
                   <p>{chatContextId ? `Working in ${notebooks.find((item) => item.id === chatContextId)?.title ?? "your notebook"}. Ask about its content or a related concept.` : "Ask anything, from kinematics to a tricky homework concept. A notebook is optional."}</p>
                 </div>
                 <div className="module-select-wrapper">

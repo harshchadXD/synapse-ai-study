@@ -12,6 +12,9 @@ export interface AIOptions {
 }
 
 function readEnvKey(key: string): string | undefined {
+  const envVal = process.env[key]?.trim();
+  if (envVal && envVal.length > 0) return envVal;
+
   try {
     const envPath = path.resolve(process.cwd(), ".env.local");
     if (fs.existsSync(envPath)) {
@@ -24,23 +27,20 @@ function readEnvKey(key: string): string | undefined {
     }
   } catch {}
 
-  const envVal = process.env[key]?.trim();
-  return envVal && envVal.length > 0 ? envVal : undefined;
+  return undefined;
 }
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const GROQ_MODELS = [
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
-  "mixtral-8x7b-32768",
-  "gemma2-9b-it",
-  "gemma-7b-it",
+  "qwen/qwen3.8-27b",
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
 ];
 
 function getGroqModel(): string {
   const preferred = readEnvKey("GROQ_CHAT_MODEL");
-  return preferred || "llama-3.3-70b-versatile";
+  return preferred || "qwen/qwen3.8-27b";
 }
 
 async function callGroq(
@@ -49,49 +49,64 @@ async function callGroq(
 ): Promise<{ text: string; model: string; provider: "groq" }> {
   const apiKey = readEnvKey("GROQ_API_KEY");
   if (!apiKey) {
-    throw new Error("GROQ_API_KEY is not configured in .env.local");
+    throw new Error(
+      "GROQ_API_KEY is not configured. Please configure GROQ_API_KEY in your Vercel Project Settings > Environment Variables (or in .env.local for local development)."
+    );
   }
 
-  const model = getGroqModel();
+  const preferredModel = getGroqModel();
+  const modelsToTry = Array.from(new Set([preferredModel, ...GROQ_MODELS]));
 
-  const response = await fetch(GROQ_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: options.temperature ?? 0.3,
-      max_tokens: options.maxTokens ?? 2048,
-    }),
-  });
+  let lastError: Error | null = null;
 
-  const payload = (await response.json().catch(() => null)) as {
-    choices?: { message?: { content?: string | null; reasoning?: string | null } }[];
-    error?: { message?: string };
-  } | null;
+  for (const model of modelsToTry) {
+    try {
+      const response = await fetch(GROQ_API_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: options.temperature ?? 0.3,
+          max_tokens: options.maxTokens ?? 2048,
+        }),
+      });
 
-  if (!response.ok || !payload) {
-    throw new Error(payload?.error?.message || `Groq HTTP ${response.status}`);
+      const payload = (await response.json().catch(() => null)) as {
+        choices?: { message?: { content?: string | null; reasoning?: string | null } }[];
+        error?: { message?: string };
+      } | null;
+
+      if (!response.ok || !payload) {
+        lastError = new Error(payload?.error?.message || `Groq HTTP ${response.status}`);
+        continue;
+      }
+
+      const messageObj = payload.choices?.[0]?.message;
+      let content = messageObj?.content;
+      if (!content?.trim() && messageObj?.reasoning?.trim()) {
+        content = messageObj.reasoning.trim();
+      }
+
+      if (!content?.trim()) {
+        lastError = new Error("Groq returned empty response");
+        continue;
+      }
+
+      return {
+        text: content.trim(),
+        model,
+        provider: "groq",
+      };
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
   }
 
-  const messageObj = payload.choices?.[0]?.message;
-  let content = messageObj?.content;
-  if (!content?.trim() && messageObj?.reasoning?.trim()) {
-    content = messageObj.reasoning.trim();
-  }
-
-  if (!content?.trim()) {
-    throw new Error("Groq returned empty response");
-  }
-
-  return {
-    text: content.trim(),
-    model,
-    provider: "groq",
-  };
+  throw lastError ?? new Error("Groq request failed with all available models.");
 }
 
 export async function aiChatCompletion(
@@ -102,15 +117,14 @@ export async function aiChatCompletion(
     const res = await callGroq(messages, options);
     return { answer: res.text, model: res.model, provider: "groq" };
   } catch (err) {
-    throw new Error(
-      `Groq API failed: ${err instanceof Error ? err.message : String(err)}. Verify GROQ_API_KEY in .env.local`
-    );
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Groq API failed: ${message}`);
   }
 }
 
 export function getAIProviderStatus() {
   const groqKey = Boolean(readEnvKey("GROQ_API_KEY"));
-  const preferredModel = readEnvKey("GROQ_CHAT_KEY") || "llama-3.3-70b-versatile";
+  const preferredModel = readEnvKey("GROQ_CHAT_MODEL") || "qwen/qwen3.8-27b";
 
   return {
     configured: { groq: groqKey },

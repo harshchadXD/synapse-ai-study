@@ -7,7 +7,6 @@ const CANDIDATE_CHAT_MODELS = [
   "qwen/qwen3.8-27b",
   "openai/gpt-oss-120b",
   "openai/gpt-oss-20b",
-  "llama-3.3-70b-versatile",
 ];
 
 function readEnvLocal(key: string): string | undefined {
@@ -25,14 +24,14 @@ function readEnvLocal(key: string): string | undefined {
 }
 
 export function getGroqConfig() {
-  // Always prefer fresh disk value or process env
-  const apiKey = (readEnvLocal("GROQ_API_KEY") || process.env.GROQ_API_KEY)?.trim();
+  // Always prefer environment variable or fresh disk value
+  const apiKey = (process.env.GROQ_API_KEY || readEnvLocal("GROQ_API_KEY"))?.trim();
 
   if (!apiKey) {
     throw new Error("Groq is not configured. Add GROQ_API_KEY to your server environment.");
   }
 
-  const preferredModel = (readEnvLocal("GROQ_CHAT_MODEL") || process.env.GROQ_CHAT_MODEL)?.trim();
+  const preferredModel = (process.env.GROQ_CHAT_MODEL || readEnvLocal("GROQ_CHAT_MODEL"))?.trim();
   const chatModel = preferredModel || CANDIDATE_CHAT_MODELS[0];
 
   return {
