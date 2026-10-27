@@ -74,8 +74,6 @@ Study from your materials — Import supported files and organize learning aroun
 
 AI-generated study resources — Create summaries, flashcards, quizzes, mindmaps, and podcast scripts from source material.
 
-Two-host StudyCast — Turn material into a conversational, two-host audio study experience.
-
 Interactive learning UI — Explore features such as 3D-flip flashcards, quiz feedback, and animated audio waveforms.
 
 Notebook dashboard — Search and organize notebooks in a focused workspace.
