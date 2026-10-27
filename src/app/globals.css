@@ -6164,6 +6164,45 @@ html[data-theme="light"] .flashcard-overlay-controls > span { color: #60716c; }
     transition: width 0.36s cubic-bezier(0.22, 1, 0.36, 1), flex-basis 0.36s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
+  .dashboard-sidebar .sidebar-header {
+    width: 100%;
+    min-width: 0;
+    height: 52px;
+    flex: 0 0 52px;
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+
+  .dashboard-sidebar .sidebar-header .dashboard-brand {
+    min-width: 0;
+    flex: 1 1 auto;
+    gap: 8px;
+    margin: 0;
+  }
+
+  .dashboard-sidebar .sidebar-header .brand-text {
+    min-width: 0;
+    flex: 1 1 auto;
+    font-size: 15px;
+    letter-spacing: -0.4px;
+    text-overflow: ellipsis;
+  }
+
+  .dashboard-sidebar .sidebar-collapse-btn {
+    position: relative;
+    z-index: 1;
+    flex: 0 0 32px;
+    visibility: visible;
+    opacity: 1;
+  }
+
+  .sidebar-collapse-icon {
+    display: grid;
+    place-items: center;
+    transform: rotate(0deg);
+    transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   .dashboard-main {
     margin-left: 240px;
     transition: margin-left 0.36s cubic-bezier(0.22, 1, 0.36, 1);
@@ -6178,14 +6217,21 @@ html[data-theme="light"] .flashcard-overlay-controls > span { color: #60716c; }
 
   .dashboard-shell[data-sidebar-collapsed="true"] .dashboard-sidebar .sidebar-header {
     height: auto;
+    flex: 0 0 auto;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
     margin-bottom: 20px;
   }
 
-  .dashboard-shell[data-sidebar-collapsed="true"] .dashboard-brand {
+  .dashboard-shell[data-sidebar-collapsed="true"] .dashboard-sidebar .sidebar-header .dashboard-brand {
+    width: 32px;
+    flex: 0 0 32px;
     justify-content: center;
     margin: 0;
+  }
+
+  .dashboard-shell[data-sidebar-collapsed="true"] .sidebar-collapse-icon {
+    transform: rotate(180deg);
   }
 
   .dashboard-shell .sidebar-link-label {
@@ -6194,10 +6240,6 @@ html[data-theme="light"] .flashcard-overlay-controls > span { color: #60716c; }
     overflow: hidden;
     white-space: nowrap;
     transition: max-width 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
-  }
-
-  .dashboard-shell[data-sidebar-collapsed="true"] .sidebar-collapse-btn {
-    transform: none;
   }
 
   .dashboard-shell[data-sidebar-collapsed="true"] .dashboard-main {

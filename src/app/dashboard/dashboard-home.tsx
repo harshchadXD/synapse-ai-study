@@ -1946,7 +1946,7 @@ export default function DashboardHome({
             onClick={() => setSidebarCollapsed((c) => !c)}
             title={sidebarCollapsed ? "Expand" : "Collapse"}
           >
-            <span style={{ display: "block", transform: sidebarCollapsed ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s var(--ease-spring)" }}>
+            <span className="sidebar-collapse-icon">
               <Icon name="chevron" size={16} />
             </span>
           </button>
