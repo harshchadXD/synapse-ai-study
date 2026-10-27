@@ -826,8 +826,6 @@ export function LoginPage({
         provider: "google",
         options: {
           redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
-          scopes: "openid email profile https://www.googleapis.com/auth/youtube.force-ssl",
-          queryParams: { access_type: "offline", prompt: "consent" },
           skipBrowserRedirect: true,
         },
       });
