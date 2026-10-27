@@ -46,6 +46,43 @@ function getNestedValue(value: unknown, path: string[]): unknown {
   return current;
 }
 
+function parseYouTubePlayerResponse(html: string) {
+  const marker = /(?:ytInitialPlayerResponse\s*=|"ytInitialPlayerResponse"\s*:)/g;
+  for (const match of html.matchAll(marker)) {
+    const start = html.indexOf("{", (match.index ?? 0) + match[0].length);
+    if (start < 0) continue;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < html.length; index += 1) {
+      const character = html[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') inString = true;
+      else if (character === "{") depth += 1;
+      else if (character === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            return JSON.parse(html.slice(start, index + 1)) as {
+              videoDetails?: { title?: string };
+              captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: Array<{ baseUrl?: string; languageCode?: string }> } };
+            };
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function extractYouTubeTranscript(response: unknown): string {
   const actions = getNestedValue(response, ["actions"]);
   if (!Array.isArray(actions)) return "";
@@ -82,7 +119,11 @@ function extractYouTubeTranscript(response: unknown): string {
 
 async function fetchYouTubeTimedText(baseUrl: string, userAgent: string): Promise<string> {
   const captionUrl = new URL(baseUrl);
-  if (captionUrl.protocol !== "https:" || captionUrl.hostname !== "www.youtube.com" || captionUrl.pathname !== "/api/timedtext") {
+  if (
+    captionUrl.protocol !== "https:" ||
+    !["www.youtube.com", "youtube.com"].includes(captionUrl.hostname) ||
+    captionUrl.pathname !== "/api/timedtext"
+  ) {
     throw new Error("YouTube returned an invalid caption source.");
   }
   captionUrl.searchParams.set("fmt", "json3");
@@ -93,16 +134,35 @@ async function fetchYouTubeTimedText(baseUrl: string, userAgent: string): Promis
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) return "";
-    const captionData = await response.json() as {
-      events?: Array<{ segs?: Array<{ utf8?: string }> }>;
-    };
-    return (captionData.events ?? [])
-      .flatMap((event) => event.segs?.map((segment) => segment.utf8 ?? "") ?? [])
+    const body = await response.text();
+    try {
+      const captionData = JSON.parse(body) as {
+        events?: Array<{ segs?: Array<{ utf8?: string }> }>;
+      };
+      const transcript = (captionData.events ?? [])
+        .flatMap((event) => event.segs?.map((segment) => segment.utf8 ?? "") ?? [])
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (transcript) return transcript;
+    } catch {
+      // YouTube can return XML even when JSON3 was requested.
+    }
+
+    const decodeXml = (text: string) => text
+      .replace(/&#x([0-9a-f]+);/gi, (_, value: string) => String.fromCodePoint(parseInt(value, 16)))
+      .replace(/&#(\d+);/g, (_, value: string) => String.fromCodePoint(parseInt(value, 10)))
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;|&#39;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+    return [...body.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/gi)]
+      .map((match) => decodeXml(match[1].replace(/<br\s*\/?>/gi, " ")).replace(/<[^>]*>/g, ""))
       .join(" ")
       .replace(/\s+/g, " ")
       .trim();
   } catch {
-    // Some videos return an empty timed-text response; the transcript endpoint is tried next.
     return "";
   }
 }
@@ -211,31 +271,34 @@ async function fetchYouTubeTranscript(videoUrl: string) {
   }
 
   const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36";
+  const headers = {
+    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent": userAgent,
+  };
   const watchResponse = await fetch(watchUrl, {
-    headers: {
-      "Accept-Language": "en-US,en;q=0.9",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36",
-    },
+    headers,
     signal: AbortSignal.timeout(15_000),
   });
   if (!watchResponse.ok) {
     throw new Error("YouTube could not load this video. Check that the link is public and try again.");
   }
 
-  const html = await watchResponse.text();
-  const playerMatch = /ytInitialPlayerResponse\s*=\s*(\{[\s\S]*?\})\s*;/m.exec(html);
-  if (!playerMatch) {
-    throw new Error("YouTube did not provide captions for this video. Try a public video with captions enabled.");
+  let html = await watchResponse.text();
+  let player = parseYouTubePlayerResponse(html);
+  if (!player) {
+    const embedResponse = await fetch(`https://www.youtube.com/embed/${videoId}`, {
+      headers,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (embedResponse.ok) {
+      const embedHtml = await embedResponse.text();
+      player = parseYouTubePlayerResponse(embedHtml);
+      html = `${html}\n${embedHtml}`;
+    }
   }
-
-  let player: {
-    videoDetails?: { title?: string };
-    captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: Array<{ baseUrl?: string; languageCode?: string }> } };
-  };
-  try {
-    player = JSON.parse(playerMatch[1]) as typeof player;
-  } catch {
-    throw new Error("YouTube’s caption data could not be read. Try again or upload the video file.");
+  if (!player) {
+    throw new Error("YouTube could not load this video’s caption information. Check that the video is public and try again.");
   }
 
   const tracks = player.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
@@ -306,8 +369,8 @@ async function fetchYouTubeTranscript(videoUrl: string) {
   if (!transcript) {
     throw new Error(
       tracks.length
-        ? "YouTube could not return caption text for this video. Try again or use a video with captions enabled."
-        : "This YouTube video has no accessible captions. Try a public video with captions enabled.",
+        ? "YouTube could not return this video’s captions. Check that captions are available, then try again."
+        : "This YouTube video has no accessible captions. Enable captions on the video or try another public video.",
     );
   }
 
