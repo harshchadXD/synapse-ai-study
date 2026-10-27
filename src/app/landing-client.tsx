@@ -805,8 +805,7 @@ export function LoginPage({
         }
       }
 
-      router.replace("/dashboard");
-      router.refresh();
+      window.location.assign("/dashboard");
     } catch (error) {
       setMessage(
         error instanceof Error

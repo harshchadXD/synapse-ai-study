@@ -6410,6 +6410,63 @@ html[data-theme="light"] .flashcard-overlay-controls > span { color: #60716c; }
   margin-top: 24px;
 }
 
+html[data-theme="light"] .focus-home-widget {
+  border-color: rgba(22, 135, 126, 0.2);
+  background: linear-gradient(110deg, rgba(22, 135, 126, 0.08), rgba(255, 255, 255, 0.96) 58%);
+}
+
+html[data-theme="light"] .focus-home-widget.is-break {
+  border-color: rgba(57, 143, 165, 0.22);
+  background: linear-gradient(110deg, rgba(57, 143, 165, 0.08), rgba(255, 255, 255, 0.96) 58%);
+}
+
+html[data-theme="light"] .focus-widget-icon {
+  border-color: rgba(22, 135, 126, 0.18);
+  background: rgba(22, 135, 126, 0.08);
+}
+
+html[data-theme="light"] .focus-home-widget.is-break .focus-widget-icon {
+  border-color: rgba(57, 143, 165, 0.2);
+  background: rgba(57, 143, 165, 0.08);
+}
+
+html[data-theme="light"] .focus-widget-text b,
+html[data-theme="light"] .focus-session-timer {
+  color: #1b2928;
+}
+
+html[data-theme="light"] .focus-widget-timer,
+html[data-theme="light"] .focus-session-label {
+  color: #08766d;
+}
+
+html[data-theme="light"] .focus-home-widget.is-break .focus-widget-timer,
+html[data-theme="light"] .focus-session-card.is-break .focus-session-label {
+  color: #28798d;
+}
+
+html[data-theme="light"] .focus-session-card {
+  border-color: rgba(22, 135, 126, 0.2);
+  background:
+    radial-gradient(circle at 50% 36%, rgba(22, 135, 126, 0.08), transparent 42%),
+    linear-gradient(145deg, #ffffff, #f1f7f5);
+  box-shadow: 0 22px 70px rgba(31, 65, 59, 0.1);
+}
+
+html[data-theme="light"] .focus-session-card.is-break {
+  border-color: rgba(57, 143, 165, 0.22);
+  background:
+    radial-gradient(circle at 50% 36%, rgba(57, 143, 165, 0.08), transparent 42%),
+    linear-gradient(145deg, #ffffff, #f1f7f8);
+}
+
+html[data-theme="light"] .focus-widget-control,
+html[data-theme="light"] .focus-stop-button {
+  border-color: rgba(32, 67, 62, 0.14);
+  background: rgba(255, 255, 255, 0.75);
+  color: #30413e;
+}
+
 @media (max-width: 560px) {
   .focus-home-widget {
     flex-wrap: wrap;
