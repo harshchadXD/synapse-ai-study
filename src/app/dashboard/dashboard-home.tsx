@@ -2669,7 +2669,7 @@ export default function DashboardHome({
               <div className="notebooks-title">
                 <span className="notebooks-title-icon"><Icon name="book" size={22} /></span>
                 <div>
-                  <h2>Lessons</h2>
+                  <h2>Notebooks</h2>
                   <p>Your sources stay organized and ready for study.</p>
                 </div>
               </div>

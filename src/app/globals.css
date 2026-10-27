@@ -6410,14 +6410,14 @@ html[data-theme="light"] .flashcard-overlay-controls > span { color: #60716c; }
   margin-top: 24px;
 }
 
-html[data-theme="light"] .focus-home-widget {
+html[data-theme="light"] .dashboard-shell .focus-home-widget {
   border-color: rgba(22, 135, 126, 0.2);
-  background: linear-gradient(110deg, rgba(22, 135, 126, 0.08), rgba(255, 255, 255, 0.96) 58%);
+  background: #ffffff;
 }
 
-html[data-theme="light"] .focus-home-widget.is-break {
+html[data-theme="light"] .dashboard-shell .focus-home-widget.is-break {
   border-color: rgba(57, 143, 165, 0.22);
-  background: linear-gradient(110deg, rgba(57, 143, 165, 0.08), rgba(255, 255, 255, 0.96) 58%);
+  background: #ffffff;
 }
 
 html[data-theme="light"] .focus-widget-icon {
@@ -6445,19 +6445,15 @@ html[data-theme="light"] .focus-session-card.is-break .focus-session-label {
   color: #28798d;
 }
 
-html[data-theme="light"] .focus-session-card {
+html[data-theme="light"] .dashboard-shell .focus-session-card {
   border-color: rgba(22, 135, 126, 0.2);
-  background:
-    radial-gradient(circle at 50% 36%, rgba(22, 135, 126, 0.08), transparent 42%),
-    linear-gradient(145deg, #ffffff, #f1f7f5);
+  background: #ffffff;
   box-shadow: 0 22px 70px rgba(31, 65, 59, 0.1);
 }
 
-html[data-theme="light"] .focus-session-card.is-break {
+html[data-theme="light"] .dashboard-shell .focus-session-card.is-break {
   border-color: rgba(57, 143, 165, 0.22);
-  background:
-    radial-gradient(circle at 50% 36%, rgba(57, 143, 165, 0.08), transparent 42%),
-    linear-gradient(145deg, #ffffff, #f1f7f8);
+  background: #ffffff;
 }
 
 html[data-theme="light"] .focus-widget-control,
