@@ -5915,6 +5915,7 @@ html[data-theme="light"] .task-list-item select.task-status-select { background:
 .chat-youtube-import > button { padding: 7px 12px; border: 0; border-radius: 999px; background: var(--dash-lime); color: #10201e; font-size: 10px; font-weight: 700; cursor: pointer; }
 .chat-youtube-import > button:last-child { display: grid; width: 30px; height: 30px; place-items: center; padding: 0; background: transparent; color: var(--dash-muted); }
 .chat-youtube-import button:disabled { cursor: wait; opacity: .6; }
+.youtube-requirement { display: block; margin: 5px 18px 10px; color: var(--dash-muted); font-size: 9px; line-height: 1.5; }
 .chat-message-content { display: grid; gap: 6px; margin-top: 7px; }
 .study-chat-message .chat-message-content p { margin: 0; white-space: pre-wrap; }
 .study-chat-message .chat-message-content h3 { margin: 7px 0 0; color: var(--dash-text); font-size: 13px; font-weight: 700; line-height: 1.45; }

@@ -67,6 +67,20 @@ No installation is needed. Open the link and explore Synapse in your browser.
 
 **Note:** You must provide your own AI API key for AI-powered features to work locally. Keep your API key private and never commit your `.env.local` file to GitHub. The Supabase configuration is provided for the existing project, so leave it unchanged unless you're setting up your own backend.
 
+## YouTube caption imports
+
+Synapse uses the official YouTube Data API v3 captions endpoints. To enable imports in a deployment:
+
+1. Enable **YouTube Data API v3** in the Google Cloud project used for OAuth.
+2. Configure Google as an OAuth provider in Supabase using a Google OAuth web client. Add the Supabase callback URL shown in the Supabase provider settings to the Google client's authorized redirect URIs.
+3. Configure the OAuth consent screen and add the `https://www.googleapis.com/auth/youtube.force-ssl` scope. Synapse requests this scope, along with `openid`, `email`, and `profile`, when the user connects Google. `youtube.readonly` does not authorize the captions list/download operations.
+4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env.local` and in Vercel's server-side environment variables (Production and any preview environments that need imports). These values must not use a `NEXT_PUBLIC_` prefix. The ID must match the Google OAuth client configured in Supabase.
+
+The browser obtains the user's Google provider tokens through Supabase OAuth and sends the current access token to the captions route for each request. Tokens are held client-side; no access token or transcript is kept in server memory between serverless invocations. When Google returns 401, the browser sends its refresh token to the server-only refresh route, which uses the server-side OAuth client secret to obtain a new access token, updates the browser's token state, and retries the caption request once. If the refresh token is expired or revoked, the user is prompted to reconnect Google. Both routes set a 10-second maximum duration and bound outbound requests with timeouts; caption bytes and cleaned transcript are processed in memory.
+
+**Important video limitation:** The official API allows caption listing/download only for videos the authenticated Google account is permitted to edit (typically videos the user owns or manages). A public video is not necessarily accessible. If permission is missing, the UI reports that requirement rather than falling back to unofficial scraping.
+
+Each successful import uses 250 YouTube API quota units: 50 for `captions.list` and 200 for `captions.download`. At the default 10,000-unit daily allocation, that is at most 40 successful imports per project per day (before other API usage). Quota exhaustion is surfaced as a recoverable error; quota increases must be requested through Google Cloud Console.
 
 # Features
 
@@ -100,4 +114,3 @@ ________________________________________________________________________________
 
 # Built by Harshwardhan Gupta and Mudit Gupta, STUDENTS OF CLASS 10TH
 # DAV PUBLIC SCHOOL, RAJENDRA NAGAR, SAHIBABAD
-

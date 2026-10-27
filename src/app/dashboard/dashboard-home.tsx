@@ -1,8 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import {
+  createClient,
+  getGoogleProviderTokens,
+  saveGoogleProviderTokens,
+} from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/theme-provider";
 import { CustomSelect } from "@/components/custom-select";
 
@@ -123,6 +127,8 @@ type FocusSession = {
 const FOCUS_DURATION_MS = 25 * 60 * 1000;
 const BREAK_DURATION_MS = 5 * 60 * 1000;
 const FOCUS_SESSION_STORAGE_KEY = "synapse_focus_session";
+const YOUTUBE_PENDING_IMPORT_KEY = "synapse_youtube_pending_import";
+const YOUTUBE_CAPTIONS_SCOPE = "openid email profile https://www.googleapis.com/auth/youtube.force-ssl";
 
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -1360,33 +1366,156 @@ export default function DashboardHome({
     }
   }
 
+  async function connectGoogleForYouTube(videoUrl: string) {
+    localStorage.setItem(YOUTUBE_PENDING_IMPORT_KEY, videoUrl);
+    const supabase = createClient();
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (!session) throw new Error("Sign in again before connecting YouTube.");
+
+    const options = {
+      redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+      scopes: YOUTUBE_CAPTIONS_SCOPE,
+      queryParams: { access_type: "offline", prompt: "consent" },
+      skipBrowserRedirect: true,
+    };
+    const response = session.user.app_metadata.provider === "google"
+      ? await supabase.auth.signInWithOAuth({ provider: "google", options })
+      : await supabase.auth.linkIdentity({ provider: "google", options });
+    if (response.error) {
+      localStorage.removeItem(YOUTUBE_PENDING_IMPORT_KEY);
+      throw response.error;
+    }
+    if (!response.data.url) {
+      localStorage.removeItem(YOUTUBE_PENDING_IMPORT_KEY);
+      throw new Error("Google did not return an authorization URL.");
+    }
+    window.location.assign(response.data.url);
+  }
+
+  async function refreshGoogleProviderToken(refreshToken: string) {
+    const response = await fetch("/api/study/youtube-captions/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+      cache: "no-store",
+    });
+    const result = await response.json() as {
+      access_token?: string;
+      refresh_token?: string;
+      error?: string;
+      code?: string;
+    };
+    if (!response.ok || !result.access_token) {
+      if (result.code === "GOOGLE_REAUTH_REQUIRED") return null;
+      throw new Error(result.error || "Could not refresh Google access.");
+    }
+    saveGoogleProviderTokens(result.access_token, result.refresh_token);
+    return result.access_token;
+  }
+
   async function importYouTubeSource(videoUrl: string) {
     if (isIngesting) return;
     setIsIngesting(true);
     setNotice("Getting captions from YouTube…");
     try {
-      const formData = new FormData();
-      formData.append("youtubeUrl", videoUrl);
-      const response = await fetch("/api/study/ingest", { method: "POST", body: formData });
-      const result = await response.json() as {
-        error?: string;
-        content?: string;
-        sourceName?: string;
-        sourceType?: string;
-        truncated?: boolean;
-        wordCount?: number;
-      };
-      if (!response.ok) throw new Error(result.error || "Could not get a transcript from this YouTube video.");
-      if (!result.content || !result.sourceName || !result.sourceType) {
-        throw new Error("YouTube returned an empty transcript. Check that captions are available for the video.");
+      const tokens = await getGoogleProviderTokens();
+      let accessToken = tokens.accessToken;
+      if (!accessToken) {
+        await connectGoogleForYouTube(videoUrl);
+        return;
       }
-      await createNotebookFromSource(result as { content: string; sourceName: string; sourceType: string; truncated?: boolean; wordCount?: number });
+
+      const fetchCaptions = () => fetch("/api/study/youtube-captions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ video_url: videoUrl }),
+        cache: "no-store",
+      });
+      let response = await fetchCaptions();
+      let result = await response.json() as {
+        transcript?: string;
+        source_name?: string;
+        word_count?: number;
+        error?: string;
+        code?: string;
+      };
+
+      if (result.code === "GOOGLE_TOKEN_EXPIRED") {
+        if (!tokens.refreshToken) {
+          await connectGoogleForYouTube(videoUrl);
+          return;
+        }
+        accessToken = await refreshGoogleProviderToken(tokens.refreshToken) ?? "";
+        if (!accessToken) {
+          await connectGoogleForYouTube(videoUrl);
+          return;
+        }
+        response = await fetchCaptions();
+        result = await response.json() as typeof result;
+      }
+
+      if (result.code === "GOOGLE_SCOPE_REQUIRED") {
+        await connectGoogleForYouTube(videoUrl);
+        return;
+      }
+      if (!response.ok && response.status === 401) {
+        await connectGoogleForYouTube(videoUrl);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(result.error || "Could not get a transcript from this YouTube video.");
+      }
+      if (!result.transcript || !result.source_name) {
+        throw new Error("YouTube returned an empty caption track.");
+      }
+
+      await createNotebookFromSource({
+        content: result.transcript,
+        sourceName: result.source_name,
+        sourceType: "video",
+        wordCount: result.word_count,
+      });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not import this YouTube video.");
     } finally {
       setIsIngesting(false);
     }
   }
+
+  const importPendingYouTubeSource = useEffectEvent(importYouTubeSource);
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      const pendingUrl = localStorage.getItem(YOUTUBE_PENDING_IMPORT_KEY);
+      if (!pendingUrl) return;
+
+      void getGoogleProviderTokens()
+        .then(({ accessToken }) => {
+          if (!active) return;
+          if (!accessToken) {
+            localStorage.removeItem(YOUTUBE_PENDING_IMPORT_KEY);
+            setNotice("Google did not grant YouTube access. Try importing the video again and approve the requested permission.");
+            return;
+          }
+          localStorage.removeItem(YOUTUBE_PENDING_IMPORT_KEY);
+          void importPendingYouTubeSource(pendingUrl);
+        })
+        .catch((error: unknown) => {
+          if (!active) return;
+          localStorage.removeItem(YOUTUBE_PENDING_IMPORT_KEY);
+          setNotice(error instanceof Error ? error.message : "Could not resume the YouTube import.");
+        });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   async function openNotebook(notebook: Notebook) {
     if (typeof window !== "undefined" && window.innerWidth <= 820) {
@@ -2279,6 +2408,7 @@ export default function DashboardHome({
                     <button type="button" aria-label="Cancel YouTube import" onClick={() => { setChatYoutubeOpen(false); setChatYoutubeUrl(""); }}><Icon name="close" size={15} /></button>
                   </form>
                 )}
+                {chatYoutubeOpen && <small className="youtube-requirement">Google captions require permission to edit the video.</small>}
                 <form className="study-chat-form" onSubmit={sendChatMessage}>
                   <div className="chat-attachment-wrap">
                     <button className={`chat-attachment-button${chatAttachOpen ? " active" : ""}`} type="button" aria-label="Add a study source" aria-expanded={chatAttachOpen} title="Attach a study source" onClick={() => setChatAttachOpen((open) => !open)}><Icon name="pin" size={18} /></button>
@@ -2628,10 +2758,13 @@ export default function DashboardHome({
             </div>
             </form>
             {youtubeOpen && (
-              <form className="youtube-form" onSubmit={addYouTubeSource}>
-                <input type="url" aria-label="YouTube video URL" placeholder="Paste a YouTube video link" value={youtubeUrl} onChange={(event) => setYoutubeUrl(event.target.value)} required disabled={isIngesting} />
-                <button type="submit" disabled={isIngesting}>{isIngesting ? "Getting transcript…" : "Import video"} <Icon name="arrow" size={15} /></button>
-              </form>
+              <>
+                <form className="youtube-form" onSubmit={addYouTubeSource}>
+                  <input type="url" aria-label="YouTube video URL" placeholder="Paste a YouTube video link" value={youtubeUrl} onChange={(event) => setYoutubeUrl(event.target.value)} required disabled={isIngesting} />
+                  <button type="submit" disabled={isIngesting}>{isIngesting ? "Getting transcript…" : "Import video"} <Icon name="arrow" size={15} /></button>
+                </form>
+                <small className="youtube-requirement">Official captions require a Google account that can edit the video.</small>
+              </>
             )}
           </section>
 
