@@ -18,6 +18,8 @@ type IconName =
   | "arrow"
   | "check"
   | "clock"
+  | "pause"
+  | "play"
   | "file"
   | "upload"
   | "pin"
@@ -46,6 +48,8 @@ function Icon({ name, size = 19 }: { name: IconName; size?: number }) {
     arrow: <><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>,
     check: <path d="m5 12 4 4L19 6" />,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    pause: <><path d="M8 5v14M16 5v14" /></>,
+    play: <path d="m8 5 12 7-12 7V5Z" />,
     file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M8 13h8M8 17h6" /></>,
     upload: <><path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 16v4h16v-4" /></>,
     pin: <><path d="m16 3 5 5-4 1-3 4-1 4-2-2-2-2-2-2 4-1 4-3z" /><path d="m7 17-4 4" /></>,
@@ -106,6 +110,17 @@ type StudyTask = {
   dueDate: string;
   createdAt: string;
 };
+
+type FocusSession = {
+  phase: "focus" | "break";
+  endsAt: number | null;
+  remainingMs: number;
+  cycles: number;
+};
+
+const FOCUS_DURATION_MS = 25 * 60 * 1000;
+const BREAK_DURATION_MS = 5 * 60 * 1000;
+const FOCUS_SESSION_STORAGE_KEY = "synapse_focus_session";
 
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -284,6 +299,7 @@ const navigation: { label: string; icon: IconName }[] = [
   { label: "Notebooks", icon: "book" },
   { label: "Chat", icon: "chat" },
   { label: "Tasks", icon: "clock" },
+  { label: "Focus", icon: "clock" },
 ];
 
 type MascotEmotion = "smiling" | "focused" | "excited" | "talking";
@@ -802,12 +818,129 @@ export default function DashboardHome({
   const [profileOpen, setProfileOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [focusSession, setFocusSession] = useState<FocusSession | null>(null);
+  const [focusSessionReady, setFocusSessionReady] = useState(false);
+  const [clockNow, setClockNow] = useState(0);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth <= 820) {
-      setSidebarCollapsed(true);
-    }
+    const timer = window.setTimeout(() => {
+      if (window.innerWidth <= 820) setSidebarCollapsed(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setClockNow(Date.now());
+      try {
+        const saved = localStorage.getItem(FOCUS_SESSION_STORAGE_KEY);
+        if (saved) {
+          const parsed: unknown = JSON.parse(saved);
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            "phase" in parsed &&
+            (parsed.phase === "focus" || parsed.phase === "break") &&
+            "remainingMs" in parsed &&
+            typeof parsed.remainingMs === "number" &&
+            Number.isFinite(parsed.remainingMs) &&
+            parsed.remainingMs >= 0 &&
+            "cycles" in parsed &&
+            typeof parsed.cycles === "number" &&
+            Number.isInteger(parsed.cycles) &&
+            parsed.cycles >= 0 &&
+            "endsAt" in parsed &&
+            (typeof parsed.endsAt === "number" || parsed.endsAt === null) &&
+            (typeof parsed.endsAt !== "number" || Number.isFinite(parsed.endsAt))
+          ) {
+            const restored = parsed as FocusSession;
+            setFocusSession(
+              restored.endsAt === null
+                ? restored
+                : { ...restored, remainingMs: Math.max(0, restored.endsAt - Date.now()) },
+            );
+          }
+        }
+      } catch (error) {
+        console.warn("Could not restore the focus session:", error);
+      } finally {
+        setFocusSessionReady(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!focusSessionReady) return;
+    try {
+      if (focusSession) {
+        localStorage.setItem(FOCUS_SESSION_STORAGE_KEY, JSON.stringify(focusSession));
+      } else {
+        localStorage.removeItem(FOCUS_SESSION_STORAGE_KEY);
+      }
+    } catch (error) {
+      console.warn("Could not save the focus session:", error);
+    }
+  }, [focusSession, focusSessionReady]);
+
+  useEffect(() => {
+    if (!focusSession || focusSession.endsAt === null) return;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setClockNow(now);
+      setFocusSession((current) => {
+        if (!current || current.endsAt === null || current.endsAt > now) return current;
+        const nextPhase = current.phase === "focus" ? "break" : "focus";
+        const nextDuration = nextPhase === "focus" ? FOCUS_DURATION_MS : BREAK_DURATION_MS;
+        return {
+          phase: nextPhase,
+          endsAt: now + nextDuration,
+          remainingMs: nextDuration,
+          cycles: current.cycles + (current.phase === "focus" ? 1 : 0),
+        };
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [focusSession]);
+
+  const focusRemainingMs = focusSession
+    ? focusSession.endsAt === null
+      ? focusSession.remainingMs
+      : Math.max(0, focusSession.endsAt - clockNow)
+    : 0;
+
+  function formatFocusTime(milliseconds: number) {
+    const totalSeconds = Math.ceil(milliseconds / 1000);
+    return `${String(Math.floor(totalSeconds / 60)).padStart(2, "0")}:${String(totalSeconds % 60).padStart(2, "0")}`;
+  }
+
+  function startFocusSession() {
+    setClockNow(Date.now());
+    setFocusSession({
+      phase: "focus",
+      endsAt: Date.now() + FOCUS_DURATION_MS,
+      remainingMs: FOCUS_DURATION_MS,
+      cycles: 0,
+    });
+  }
+
+  function toggleFocusSession() {
+    if (!focusSession) return;
+    if (focusSession.endsAt === null) {
+      setClockNow(Date.now());
+      setFocusSession({
+        ...focusSession,
+        endsAt: Date.now() + focusSession.remainingMs,
+      });
+      return;
+    }
+    const remainingMs = Math.max(0, focusSession.endsAt - Date.now());
+    setFocusSession({ ...focusSession, endsAt: null, remainingMs });
+  }
+
+  function endFocusSession() {
+    setFocusSession(null);
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1809,6 +1942,7 @@ export default function DashboardHome({
             className="sidebar-collapse-btn"
             type="button"
             aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!sidebarCollapsed}
             onClick={() => setSidebarCollapsed((c) => !c)}
             title={sidebarCollapsed ? "Expand" : "Collapse"}
           >
@@ -1827,7 +1961,7 @@ export default function DashboardHome({
               onClick={() => chooseNavigation(item.label)}
             >
               <Icon name={item.icon} size={19} />
-              {!sidebarCollapsed && <span>{item.label}</span>}
+              <span className="sidebar-link-label">{item.label}</span>
               {item.label === "Chat" && !sidebarCollapsed && <span className="nav-new">AI</span>}
               {item.label === "Tasks" && pendingTaskCount > 0 && <span className="nav-task-count">{pendingTaskCount}</span>}
             </button>
@@ -2007,6 +2141,48 @@ export default function DashboardHome({
                     <button className="task-delete-button" type="button" aria-label={`Delete ${task.title}`} onClick={() => setTasks((items) => items.filter((item) => item.id !== task.id))}><Icon name="close" size={14} /></button>
                   </article>
                 ))}
+              </div>
+            </section>
+          ) : activeNav === "Focus" ? (
+            <section className="workspace-module focus-page">
+              <div className="workspace-module-heading">
+                <div>
+                  <span className="dashboard-eyebrow"><span /> POMODORO FOCUS</span>
+                  <h1>One thing at a time<span>.</span></h1>
+                  <p>Work in a focused 25-minute session, then recharge with a 5-minute break.</p>
+                </div>
+              </div>
+              <div className={`focus-session-card${focusSession?.phase === "break" ? " is-break" : ""}`}>
+                <span className="focus-session-label">
+                  <Icon name={focusSession?.phase === "break" ? "spark" : "clock"} size={16} />
+                  {focusSession ? (focusSession.phase === "focus" ? "FOCUS SESSION" : "SHORT BREAK") : "READY WHEN YOU ARE"}
+                </span>
+                <strong className="focus-session-timer" aria-live="polite">
+                  {focusSession ? formatFocusTime(focusRemainingMs) : "25:00"}
+                </strong>
+                <p>
+                  {focusSession
+                    ? focusSession.phase === "focus"
+                      ? "Stay with your task. Your break starts when the timer ends."
+                      : "Step away for a moment. Your next focus session starts automatically."
+                    : "A little focused time adds up. Start a session whenever you’re ready."}
+                </p>
+                {focusSession && <span className="focus-cycle-count">{focusSession.cycles} {focusSession.cycles === 1 ? "session" : "sessions"} completed</span>}
+                <div className="focus-session-actions">
+                  {focusSession ? (
+                    <>
+                      <button className="module-primary-button" type="button" onClick={toggleFocusSession}>
+                        <Icon name={focusSession.endsAt === null ? "play" : "pause"} size={15} />
+                        {focusSession.endsAt === null ? "Resume timer" : "Pause timer"}
+                      </button>
+                      <button className="focus-stop-button" type="button" onClick={endFocusSession}>End session</button>
+                    </>
+                  ) : (
+                    <button className="module-primary-button" type="button" disabled={!focusSessionReady} onClick={startFocusSession}>
+                      <Icon name="clock" size={15} /> Start 25-minute focus
+                    </button>
+                  )}
+                </div>
               </div>
             </section>
           ) : activeNav === "Chat" ? (
@@ -2394,6 +2570,23 @@ export default function DashboardHome({
             </>
           ) : (
             <>
+          {focusSession && (
+            <section className={`focus-home-widget${focusSession.phase === "break" ? " is-break" : ""}`} aria-label="Active focus session">
+              <button className="focus-widget-copy" type="button" onClick={() => setActiveNav("Focus")}>
+                <span className="focus-widget-icon"><Icon name={focusSession.phase === "focus" ? "clock" : "spark"} size={19} /></span>
+                <span className="focus-widget-text">
+                  <b>{focusSession.phase === "focus" ? "Focus session in progress" : "Break time"}</b>
+                  <small>{focusSession.endsAt === null ? "Paused · pick up when you’re ready" : focusSession.phase === "focus" ? "Stay focused — your break is coming up" : "Recharge — your next session starts automatically"}</small>
+                </span>
+                <strong className="focus-widget-timer">{formatFocusTime(focusRemainingMs)}</strong>
+                <span className="focus-widget-link">Open <Icon name="arrow" size={14} /></span>
+              </button>
+              <button className="focus-widget-control" type="button" onClick={toggleFocusSession}>
+                {focusSession.endsAt === null ? "Resume" : "Pause"}
+              </button>
+              <button className="focus-widget-control focus-widget-end" type="button" onClick={endFocusSession}>End</button>
+            </section>
+          )}
           <section className="dashboard-welcome dashboard-reveal">
             <div className="welcome-copy">
               <span className="dashboard-eyebrow"><span /> YOUR STUDY SPACE, IN SYNC</span>
