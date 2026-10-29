@@ -98,6 +98,4 @@ ________________________________________________________________________________
 ╚══════╝   ╚═╝   ╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝
 ```
 
-# Built by Harshwardhan Gupta and Mudit Gupta, STUDENTS OF CLASS 10TH
-# DAV PUBLIC SCHOOL, RAJENDRA NAGAR, SAHIBABAD
-
+# Built by Harshwardhan Gupta 
